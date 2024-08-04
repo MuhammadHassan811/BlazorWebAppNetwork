@@ -1,0 +1,128 @@
+﻿<!-- Pages/IPScanner.razor -->
+@page "/networkdetail"
+@* @inject HttpClient Http *@
+@attribute [StreamRendering]
+<h3>IP Scanner</h3>
+
+@* <button @onclick="StartScan">Start Scan</button> *@
+
+@if (scanResults != null)
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>IP Address</th>
+                <th>Status</th>
+                <th>MAC Address</th>
+                <th>Manufacturer</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var result in scanResults)
+            {
+                <tr>
+                    <td>@result.IpAddress</td>
+                    <td>@result.Status</td>
+                    <td>@result.MacAddress</td>
+                    <td>@result.Manufacturer</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<IPScanResult> scanResults;
+    // Models/IPScanResult.cs
+    public class IPScanResult
+    {
+        public string IpAddress { get; set; }
+        public string Status { get; set; }
+        public string MacAddress { get; set; }
+        public string Manufacturer { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        scanResults = new List<IPScanResult>();
+
+        string baseIp = "192.168.1.";
+        int startRange = 1;
+        int endRange = 254;
+
+        var tasks = new List<Task<IPScanResult>>();
+
+        for (int i = startRange; i <= endRange; i++)
+        {
+            string ip = baseIp + i;
+            tasks.Add(Task.Run(async () =>
+            {
+                return await ScanIpAddressAsync(ip);
+            }));
+        }
+
+        scanResults = (await Task.WhenAll(tasks)).ToList();
+    }
+
+    private async Task<IPScanResult> ScanIpAddressAsync(string ipAddress)
+    {
+        var result = new IPScanResult
+            {
+                IpAddress = ipAddress,
+                Status = "DOWN",
+                MacAddress = "N/A",
+                Manufacturer = "N/A"
+            };
+
+        try
+        {
+            using (var ping = new System.Net.NetworkInformation.Ping())
+            {
+                var reply = await ping.SendPingAsync(ipAddress, 1000);
+                if (reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                {
+                    result.Status = "UP";
+                    result.MacAddress = await GetMacAddressAsync(ipAddress);
+                    result.Manufacturer = await GetManufacturerAsync(result.MacAddress);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            result.Status = $"Error - {ex.Message}";
+        }
+
+        return result;
+    }
+
+    private async Task<string> GetMacAddressAsync(string ipAddress)
+    {
+        // Replace this with actual MAC address lookup logic
+        return await Task.FromResult("00:00:00:00:00:00");
+    }
+
+    private async Task<string> GetManufacturerAsync(string macAddress)
+    {
+        string apiUrl = $"https://api.macvendors.com/{macAddress}";
+
+        using (System.Net.Http.HttpClient client = new System.Net.Http.HttpClient())
+        {
+            try
+            {
+                System.Net.Http.HttpResponseMessage response = await client.GetAsync(apiUrl);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadAsStringAsync();
+                }
+                else
+                {
+                    return "Unknown Manufacturer";
+                }
+            }
+            catch
+            {
+                return "Lookup Failed";
+            }
+        }
+    }
+}
